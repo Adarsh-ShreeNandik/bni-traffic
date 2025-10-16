@@ -26,6 +26,7 @@ Route::post('login', [UserController::class, 'login']);
 
 Route::middleware(['auth:api'])->group(function () {
     Route::get('users', [UserController::class, 'fetchUsers']);
+    Route::get('user-report', [UserController::class, 'userReport']);
     Route::get('events', [EventController::class, 'index']);
     Route::get('relevants', [RelevantController::class, 'index']);
     Route::post('change-password', [UserController::class, 'changePassword']);

@@ -193,7 +193,7 @@ class ImportController extends Controller
 
             // Validate file
             $validation = Validator::make($input, [
-                'file' => 'required|mimes:xlsx,xls,csv',
+                'file' => 'required',
             ]);
 
             if ($validation->fails()) {
@@ -207,54 +207,73 @@ class ImportController extends Controller
             $spreadsheet = IOFactory::load($file);
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
+            $targeted_date = $rows[6][10] ?? null;
+            if ($targeted_date) {
+                // The format is day/month/year with 2-digit year
+                $date = \DateTime::createFromFormat('d/m/y', $targeted_date);
 
+                if ($date) {
+                    $targeted_date = $date->format('Y-m-d'); // convert to YYYY-mm-dd
+                }
+            }
             // Convert header row to DB-friendly format
             $header = array_map(function ($h) {
                 return strtolower(str_replace([' ', '-'], ['_', '_'], $h));
-            }, $rows[0]);
+            }, $rows[7]);
 
-            unset($rows[0]); // Remove header row
+            unset($rows[7]); // Remove header row
+
+            $totalRows = count($rows);
 
             // Optional: Delete old data before import
             // Relevant::truncate();
 
-            foreach ($rows as $row) {
+            // Start from row 9 (index 8)
+            for ($i = 8; $i < $totalRows; $i++) {
+                $row = $rows[$i];
                 $data = array_combine($header, $row);
 
-                // Skip row if critical field is missing (e.g., name)
-                if (empty($data['name'])) {
+                // Skip row if critical fields are missing
+                if (empty($data['first_name']) || empty($data['last_name'])) {
                     continue;
                 }
 
-                if (Relevant::where('name', $data['name'])->exists()) {
-                    continue;
-                }
+                $name = $data['first_name'] . ' ' . $data['last_name'];
 
-                // Check if user already exists by name
-                $user = User::where('name', $data['name'])->first();
-                // Skip row if user does not exist
+                // Check if user exists by first_name and last_name
+                $user = User::where('name', $name)
+                    ->first();
+
                 if (!$user) {
+                    continue; // Skip if user not found
+                }
+
+                // Prevent duplicate relevant entry for the same user
+                if (Relevant::where('user_id', $user->id)->exists()) {
                     continue;
                 }
 
-                // Insert into database
+                // Insert into relevant table
                 Relevant::create([
                     'user_id' => $user->id,
-                    'name'   => $data['name'] ?? null,
-                    'p'      => $data['p'] ?? null,
-                    'a'      => $data['a'] ?? null,
-                    'l'      => $data['l'] ?? null,
-                    'm'      => $data['m'] ?? null,
-                    's'      => $data['s'] ?? null,
-                    'rgi'    => $data['rgi'] ?? null,
-                    'rgo'    => $data['rgo'] ?? null,
-                    'rri'    => $data['rri'] ?? null,
-                    'rro'    => $data['rro'] ?? null,
-                    'v'      => $data['v'] ?? null,
-                    '1_2_1'  => $data['1_2_1'] ?? null,
-                    'tyfcb'  => $data['tyfcb'] ?? null,
-                    'ceu'    => $data['ceu'] ?? null,
-                    't'      => $data['t'] ?? null,
+                    'name'    => $user->name, // optional: store full name
+                    'first_name' => $data['first_name'] ?? null,
+                    'last_name' => $data['last_name'] ?? null,
+                    'p'       => $data['p'] ?? null,
+                    'a'       => $data['a'] ?? null,
+                    'l'       => $data['l'] ?? null,
+                    'm'       => $data['m'] ?? null,
+                    's'       => $data['s'] ?? null,
+                    'rgi'     => $data['rgi'] ?? null,
+                    'rgo'     => $data['rgo'] ?? null,
+                    'rri'     => $data['rri'] ?? null,
+                    'rro'     => $data['rro'] ?? null,
+                    'v'       => $data['v'] ?? null,
+                    '1_2_1'   => $data['1_2_1'] ?? null,
+                    'tyfcb'   => $data['tyfcb'] ?? null,
+                    'ceu'     => $data['ceu'] ?? null,
+                    't'       => $data['t'] ?? null,
+                    'targeted_date' => $targeted_date,
                 ]);
             }
 
