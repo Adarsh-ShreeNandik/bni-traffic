@@ -108,13 +108,13 @@ class UserController extends Controller
                 'message' => 'Something went wrong during login'
             ], 500);
         }
-    }
+    } 
 
     public function userReport()
     {
         try {
             $user = Auth::user();
-
+            $userId = $user->id;
             $relevant = Relevant::with('user')->select(
                 'user_id',
                 'p',
@@ -132,13 +132,24 @@ class UserController extends Controller
                 'ceu',
                 't',
                 'targeted_date'
-            )->where('user_id', $user->id)->first();
+            )->where('user_id', $userId)->first();
 
             if (!$relevant) {
                 return response()->json([
                     'status' => false,
                     'message' => 'No relevant record found.'
                 ], 404);
+            }
+
+            $trainingCount = 0;
+            if ($relevant && $relevant->user) {
+                $targetDate = \Carbon\Carbon::parse($relevant->targeted_date);
+                $fromDate = $targetDate->copy()->subMonths(6);
+                $toDate = $targetDate->copy();
+                // Now filter trainings dynamically
+                $trainingCount = $relevant->user->trainings()
+                    ->whereBetween('event_date', [$fromDate, $toDate])
+                    ->count();
             }
 
             $targeted_date = $relevant->targeted_date ?? null;
@@ -156,7 +167,7 @@ class UserController extends Controller
             $ariving_on_time = $relevant->l;
             $tyfcb = (int)$relevant->tyfcb;
             $testimonial = (int)$relevant->t;
-            $training = 1;
+            $training = $trainingCount;
             $weeks = $relevant->p + $relevant->a + $relevant->l + $relevant->m + $relevant->s;
 
             $referralPointsArray = [
@@ -180,24 +191,20 @@ class UserController extends Controller
             $testimonialPointsArray = [
                 ['points' => 5, 'multiplier' => 0.0000001],
                 ['points' => 10, 'multiplier' => 0.074],
-                // ['points' => 15, 'multiplier' => null],
-                // ['points' => 20, 'multiplier' => null],
             ];
 
             $testimonialResult = $this->calculateCategoryPoints($weeks, $testimonialPointsArray);
-            // dd($testimonialResult);
+
             $tyfcbPointsArray = [
                 ['points' => 5, 'value' => 500000],
                 ['points' => 10, 'value' => 1000000],
                 ['points' => 15, 'value' => 2000000],
-                // ['points' => 20, 'value' => null],
             ];
 
             $traningPointsArray = [
                 ['points' => 5, 'value' => 1],
                 ['points' => 10, 'value' => 2],
                 ['points' => 15, 'value' => 3],
-                // ['points' => 20, 'value' => null],
             ];
 
             // Build performance array
@@ -208,7 +215,7 @@ class UserController extends Controller
             ];
 
             $performance[] = [
-                'name' => 'arriving_on_time',
+                'name' => 'arriving on time',
                 'current_score' => $this->calculateArrivingOnTime(5, $ariving_on_time),
                 'current_data' => $ariving_on_time,
             ];
@@ -245,18 +252,18 @@ class UserController extends Controller
 
             $needToDo[] = [
                 'name' => 'absenteeism',
-                '5_points' => 0,
-                '10_points' => 0,
-                '15_points' => 0,
-                '20_points' => 0,
+                '5_points' => "-",
+                '10_points' => "-",
+                '15_points' => "-",
+                '20_points' => "-",
             ];
 
             $needToDo[] = [
-                'name' => 'arriving_on_time',
-                '5_points' => 0,
-                '10_points' => 0,
-                '15_points' => 0,
-                '20_points' => 0,
+                'name' => 'arriving on time',
+                '5_points' => "-",
+                '10_points' => "-",
+                '15_points' => "-",
+                '20_points' => "-",
             ];
 
             // dd($referralResult);

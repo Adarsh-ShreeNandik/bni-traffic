@@ -19,6 +19,7 @@ class ImportController extends Controller
     public function importUsers(Request $request)
     {
         try {
+            ini_set('max_execution_time', 300);
             $input = $request->all();
 
             $validation = Validator::make($input, [
@@ -97,6 +98,7 @@ class ImportController extends Controller
     public function importEvents(Request $request)
     {
         try {
+            ini_set('max_execution_time', 300);
             $input = $request->all();
 
             // Validate file
@@ -134,10 +136,22 @@ class ImportController extends Controller
                 }
 
                 // Check if user already exists by name
-                $user = User::where('name', $data['name'])->first();
-                // Skip row if user does not exist
+                $user = User::where('name', $data['name'])->orWhere('email', $data['email'])->first();
+
                 if (!$user) {
-                    continue;
+                    // If your users table has these columns, map them
+                    $user = User::create([
+                        'first_name'  => $data['first_name'] ?? null,
+                        'last_name'   => $data['last_name'] ?? null,
+                        'name'        => $data['name'] ?? null,
+                        'email'       => $data['email'] ?? null,
+                        'phone'       => $data['phone'] ?? null,
+                        'join_date'   => $this->formatExcelDate($data['join_date'] ?? null),
+                        'chapter'     => $data['chapter_name'] ?? null,
+                        'region_name' => $data['region_name'] ?? null,
+                        'password'    => Hash::make('Ashv@2025'), // fallback password
+                        'role_id'     => 2,
+                    ]);
                 }
 
                 // Prevent duplicate events
@@ -189,6 +203,7 @@ class ImportController extends Controller
     public function importRelevant(Request $request)
     {
         try {
+            ini_set('max_execution_time', 300);
             $input = $request->all();
 
             // Validate file
