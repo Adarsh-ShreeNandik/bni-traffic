@@ -11,3 +11,6 @@ ADD COLUMN `role_id` INT(10) NOT NULL AFTER `region_name`;
 ALTER TABLE `relevants` ADD `first_name` VARCHAR(100) NOT NULL AFTER `updated_at`, ADD `last_name` VARCHAR(100) NOT NULL AFTER `first_name`;
 
 ALTER TABLE `relevants` ADD `targeted_date` DATE NULL AFTER `last_name`;
+
+<!-- 27-10-2025 -->
+ALTER TABLE `users` ADD `gst` VARCHAR(100) NULL AFTER `updated_at`, ADD `company_name` VARCHAR(100) NULL AFTER `gst`, ADD `address` VARCHAR(255) NULL AFTER `company_name`;

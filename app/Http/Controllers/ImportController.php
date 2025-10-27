@@ -125,6 +125,7 @@ class ImportController extends Controller
             }, $rows[0]);
 
             unset($rows[0]); // Remove header row
+            Event::truncate();
 
             foreach ($rows as $row) {
                 $data = array_combine($header, $row);
@@ -241,7 +242,7 @@ class ImportController extends Controller
             $totalRows = count($rows);
 
             // Optional: Delete old data before import
-            // Relevant::truncate();
+            Relevant::truncate();
 
             // Start from row 9 (index 8)
             for ($i = 8; $i < $totalRows; $i++) {

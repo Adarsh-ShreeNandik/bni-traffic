@@ -33,5 +33,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::post('import-users', [ImportController::class, 'importUsers']);
     Route::post('import-events', [ImportController::class, 'importEvents']);
     Route::post('import-relevants', [ImportController::class, 'importRelevant']);
+    Route::get('user-profile', [UserController::class, 'userProfile']);
+    Route::post('update-user-profile', [UserController::class, 'updateUserProfile']);
     Route::post('logout', [UserController::class, 'logout']);
 });

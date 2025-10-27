@@ -27,7 +27,10 @@ class User extends Authenticatable
         'last_name',
         'chapter',
         'region_name',
-        'role_id'
+        'role_id',
+        'gst',
+        'company_name',
+        'address'
     ];
 
     /**
