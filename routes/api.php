@@ -35,5 +35,8 @@ Route::middleware(['auth:api'])->group(function () {
     Route::post('import-relevants', [ImportController::class, 'importRelevant']);
     Route::get('user-profile', [UserController::class, 'userProfile']);
     Route::post('update-user-profile', [UserController::class, 'updateUserProfile']);
+    Route::post('user-reports', [UserController::class, 'userTableReport']);
     Route::post('logout', [UserController::class, 'logout']);
+    // Route::post('forget-password', [UserController::class, 'forgetPassword']);
+    // Route::post('verify-otp', [UserController::class, 'verifyOtp']);
 });
