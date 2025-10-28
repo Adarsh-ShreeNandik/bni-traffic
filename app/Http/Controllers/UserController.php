@@ -138,9 +138,22 @@ class UserController extends Controller
             )->where('user_id', $userId)->first();
 
             if (!$relevant) {
+                $date = new \DateTime();
+                $targetDate = \Carbon\Carbon::parse($date);
+                $targeted_date = $date->format('M-y');
                 return response()->json([
                     'status' => false,
-                    'message' => 'No relevant record found.'
+                    'message' => 'No relevant record found.',
+                    'performance' => [],
+                    'need_to_do' => [],
+                    'user_info' => [
+                        'chapter' => $user->chapter,
+                        'target_month' => $targeted_date,
+                        'name' => $user->name,
+                        'total_score' => 0,
+                        'wednesdayCount' => 0,
+                        'weeks' => 0
+                    ]
                 ], 404);
             }
 
