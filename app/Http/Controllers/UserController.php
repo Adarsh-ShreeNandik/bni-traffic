@@ -154,7 +154,7 @@ class UserController extends Controller
                         'wednesdayCount' => 0,
                         'weeks' => 0
                     ]
-                ], 404);
+                ], 200);
             }
 
             $trainingCount = 0;
@@ -344,21 +344,21 @@ class UserController extends Controller
                     ?? '1', // default to Grey if score not found
             ];
 
-            $needToDo[] = [
-                'name' => 'absenteeism',
-                '5_points' => "-",
-                '10_points' => "-",
-                '15_points' => "-",
-                '20_points' => "-",
-            ];
+            // $needToDo[] = [
+            //     'name' => 'absenteeism',
+            //     '5_points' => "-",
+            //     '10_points' => "-",
+            //     '15_points' => "-",
+            //     '20_points' => "-",
+            // ];
 
-            $needToDo[] = [
-                'name' => 'arriving on time',
-                '5_points' => "-",
-                '10_points' => "-",
-                '15_points' => "-",
-                '20_points' => "-",
-            ];
+            // $needToDo[] = [
+            //     'name' => 'arriving on time',
+            //     '5_points' => "-",
+            //     '10_points' => "-",
+            //     '15_points' => "-",
+            //     '20_points' => "-",
+            // ];
 
             // dd($referralResult);
             $needToDo[] = $this->calculateNeedToDo('visitor', $visitor, $visitorResult);
@@ -374,7 +374,8 @@ class UserController extends Controller
             foreach ($needToDo as &$item) {
                 foreach ($allKeys as $key) {
                     if (!array_key_exists($key, $item)) {
-                        $item[$key] = '-'; // fill missing key with '-'
+                        $item[$key]['value'] = '-'; // fill missing key with '-'
+                        $item[$key]['color_code'] = 4; // fill missing key with '-'
                     }
                 }
                 // Optional: sort keys so order is consistent
@@ -1280,7 +1281,42 @@ class UserController extends Controller
     private function calculateNeedToDo(string $name, int|float $currentData, array $calculatedResults): array
     {
         $needToDo = ['name' => $name];
-
+// '1'; // Gray
+// '2'; // Red
+// '3'; // Yellow
+// '4'; // Green
+        $temp_static_color =[
+            "visitor" => [
+                '5_points' => 2,
+                '10_points' => 3,
+                '15_points' => 4,
+                '20_points' => 4,
+            ],
+            "referrals" => [
+                '5_points' => 1,
+                '10_points' => 2,
+                '15_points' => 3,
+                '20_points' => 4,
+            ],
+            "tyfcb" => [
+                '5_points' => 2,
+                '10_points' => 3,
+                '15_points' => 4,
+                '20_points' => 4,
+            ],
+            "testimonial" => [
+                 '5_points' => 3,
+                '10_points' => 4,
+                '15_points' => 4,
+                '20_points' => 4,
+            ],
+            "training" => [
+                 '5_points' => 2,
+                '10_points' => 3,
+                '15_points' => 4,
+                '20_points' => 4,
+            ]
+        ];
         foreach ($calculatedResults as $rule) {
             $pointKey = ($rule['point'] ?? $rule['points']) . '_points';
 
@@ -1288,7 +1324,11 @@ class UserController extends Controller
             $target = $rule['multiplier'] ?? $rule['value'] ?? null;
 
             // If target is null, set '-' otherwise subtract currentData and round up
-            $needToDo[$pointKey] = is_null($target) ? '-' : max(round($target - $currentData), 0);
+            $needToDo[$pointKey]['value'] = is_null($target) ? '-' : max(round($target - $currentData), 0);
+            if(isset($temp_static_color[$name][$pointKey]))
+            {
+                $needToDo[$pointKey]['color_code'] = $temp_static_color[$name][$pointKey];
+            }
         }
 
         return $needToDo;
