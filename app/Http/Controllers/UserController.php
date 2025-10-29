@@ -1091,7 +1091,8 @@ class UserController extends Controller
 
             // ✅ Send the email (safe mail sending)
             try {
-                Mail::to($user->email)->send(new ForgetPasswordMail($user->name, $otp));
+                // Mail::to($user->email)->send(new ForgetPasswordMail($user->name, $otp));
+                Mail::to("anuj@shreenandik.in")->send(new ForgetPasswordMail($user->name, $otp));
             } catch (\Exception $mailException) {
                 Log::warning("Failed to send password reset email: " . $mailException->getMessage());
             }
@@ -1154,7 +1155,7 @@ class UserController extends Controller
                 return response()->json([
                     'status' => false,
                     'message' => 'Invalid OTP or already verified.',
-                ], 400);
+                ], 422);
             }
 
             // ✅ Check OTP expiration
@@ -1162,7 +1163,7 @@ class UserController extends Controller
                 return response()->json([
                     'status' => false,
                     'message' => 'OTP has expired. Please request a new one.',
-                ], 400);
+                ], 410);
             }
 
             // ✅ Mark OTP as verified
@@ -1193,6 +1194,58 @@ class UserController extends Controller
         }
     }
 
+    public function updatePassword(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'email' => 'required|email',
+                'password' => 'required|string|min:8',
+                'cpassword' => 'required|same:password',
+            ], [
+                'email.required' => 'Email field is required.',
+                'email.email' => 'Please enter a valid email address.',
+                'password.required' => 'Password field is required.',
+                'password.string' => 'Password must be a valid string.',
+                'password.min' => 'Password must be at least 8 characters long.',
+                'cpassword.required' => 'Confirm Password field is required.',
+                'cpassword.same' => 'Confirm Password must match the Password field.',
+            ]);
+
+            // ✅ Find user
+            $user = User::where('email', $validated['email'])->first();
+
+            if (!$user) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Email does not exist.'
+                ], 404);
+            }
+
+            // ✅ Update password
+            $user->update([
+                'password' => Hash::make($validated['password']),
+            ]);
+
+            // ✅ Return success
+            return response()->json([
+                'status' => true,
+                'message' => 'Password changed successfully.',
+            ], 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // ❌ Validation errors
+            return response()->json([
+                'status' => false,
+                'message' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            // ❌ General exceptions
+            Log::error("Update password error: " . $e->getMessage());
+            return response()->json([
+                'status' => false,
+                'message' => 'Something went wrong. Please try again later.',
+            ], 500);
+        }
+    }
 
     public function logout(Request $request)
     {
@@ -1281,11 +1334,11 @@ class UserController extends Controller
     private function calculateNeedToDo(string $name, int|float $currentData, array $calculatedResults): array
     {
         $needToDo = ['name' => $name];
-// '1'; // Gray
-// '2'; // Red
-// '3'; // Yellow
-// '4'; // Green
-        $temp_static_color =[
+        // '1'; // Gray
+        // '2'; // Red
+        // '3'; // Yellow
+        // '4'; // Green
+        $temp_static_color = [
             "visitor" => [
                 '5_points' => 2,
                 '10_points' => 3,
@@ -1305,13 +1358,13 @@ class UserController extends Controller
                 '20_points' => 4,
             ],
             "testimonial" => [
-                 '5_points' => 3,
+                '5_points' => 3,
                 '10_points' => 4,
                 '15_points' => 4,
                 '20_points' => 4,
             ],
             "training" => [
-                 '5_points' => 2,
+                '5_points' => 2,
                 '10_points' => 3,
                 '15_points' => 4,
                 '20_points' => 4,
@@ -1325,8 +1378,7 @@ class UserController extends Controller
 
             // If target is null, set '-' otherwise subtract currentData and round up
             $needToDo[$pointKey]['value'] = is_null($target) ? '-' : max(round($target - $currentData), 0);
-            if(isset($temp_static_color[$name][$pointKey]))
-            {
+            if (isset($temp_static_color[$name][$pointKey])) {
                 $needToDo[$pointKey]['color_code'] = $temp_static_color[$name][$pointKey];
             }
         }

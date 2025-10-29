@@ -13,7 +13,7 @@ class VerifyOtp extends Model
 
     protected $fillable = [
         'otp',
-        'is_verify',
+        'is_verified',
         'phone',
         'email',
         'type',

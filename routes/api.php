@@ -23,6 +23,9 @@ use Illuminate\Support\Facades\Route;
 // });
 
 Route::post('login', [UserController::class, 'login']);
+Route::post('forget-password', [UserController::class, 'forgetPassword']); // We can use for resend OTP same API
+Route::post('verify-otp', [UserController::class, 'verifyOtp']);
+Route::post('update-password', [UserController::class, 'updatePassword']);
 
 Route::middleware(['auth:api'])->group(function () {
     Route::get('users', [UserController::class, 'fetchUsers']);
@@ -37,6 +40,4 @@ Route::middleware(['auth:api'])->group(function () {
     Route::post('update-user-profile', [UserController::class, 'updateUserProfile']);
     Route::post('user-reports', [UserController::class, 'userTableReport']);
     Route::post('logout', [UserController::class, 'logout']);
-    // Route::post('forget-password', [UserController::class, 'forgetPassword']);
-    // Route::post('verify-otp', [UserController::class, 'verifyOtp']);
 });
