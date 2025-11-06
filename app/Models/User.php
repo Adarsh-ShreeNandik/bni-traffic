@@ -57,4 +57,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(Event::class);
     }
+
+    public function relevants()
+    {
+        return $this->hasMany(Relevant::class, 'user_id', 'id');
+    }
 }

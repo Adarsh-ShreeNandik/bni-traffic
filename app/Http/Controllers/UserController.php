@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Carbon\Carbon;
 
 class UserController extends Controller
 {
@@ -411,6 +412,246 @@ class UserController extends Controller
             ], 500);
         }
     }
+
+    public function allUserReports(Request $request)
+    {
+        try {
+            $input = $request->all();
+            $targeted_date = $request->input('targeted_date') ?? Carbon::now()->format('M-y'); // e.g. "Nov-25"
+            // Fetch all users with their relevant data (latest record)
+            // $users = User::with(['relevants' => function ($q) use ($targeted_date) {
+            //     // Match month-year in "M-Y" format (e.g. Oct-2025)
+            //     $q->whereRaw("DATE_FORMAT(targeted_date, '%b-%Y') = ?", [$targeted_date]);
+            // }, 'trainings'])->paginate($input['per_page_count'], ['*'], 'page', $input['curr_page']);
+
+            $users = User::with(['relevants' => function ($q) use ($targeted_date) {
+                $q->whereRaw("DATE_FORMAT(targeted_date, '%b-%Y') = ?", [$targeted_date]);
+            }, 'trainings'])
+                ->whereHas('relevants', function ($q) use ($targeted_date) {
+                    $q->whereRaw("DATE_FORMAT(targeted_date, '%b-%Y') = ?", [$targeted_date]);
+                })
+                ->paginate(
+                    $input['per_page_count'] ?? 10,
+                    ['*'],
+                    'page',
+                    $input['curr_page'] ?? 1
+                );
+
+            $data = [];
+
+            foreach ($users as $user) {
+                $relevant = $user->relevants->first();
+
+                // if (!$relevant) {
+                //     // $performance['absenteeism'] = [];
+                //     // $performance['arriving_on_time'] = [];
+                //     // $performance['visitor'] = [];
+                //     // $performance['referrals'] = [];
+                //     // $performance['tyfcb'] = [];
+                //     // $performance['testimonial'] = [];
+                //     // $performance['training'] = [];
+                //     // $performance['user'] = [
+                //     //     'id' => $user->id,
+                //     //     'name' => $user->name,
+                //     //     'total_score' => 0
+                //     // ];
+                //     // $data[] = $performance;
+                //     continue;
+                // }
+
+                $targetDate = \Carbon\Carbon::parse($relevant->targeted_date);
+                $fromDate = $targetDate->copy()->subMonths(6);
+                $toDate = $targetDate->copy();
+
+                // Training count (last 6 months)
+                $trainingCount = $user->trainings()
+                    ->whereBetween('event_date', [$fromDate, $toDate])
+                    ->count();
+
+                // Calculate Wednesday count
+                $join_date = $user->join_date;
+                $currentDate = \Carbon\Carbon::parse($join_date);
+                $period = \Carbon\CarbonPeriod::create($currentDate, $targetDate);
+                $wednesdayCount = min(
+                    collect($period)->filter(fn($date) => $date->isWednesday())->count(),
+                    26
+                );
+
+                $Absenteeism = (int)$relevant->a;
+                $referral = (int)$relevant->rgi + $relevant->rgo;
+                $visitor = $relevant->v;
+                $ariving_on_time = $relevant->l;
+                $tyfcb = (int)$relevant->tyfcb;
+                $testimonial = (int)$relevant->t;
+                $training = $trainingCount;
+
+                $Absenteeism_color_codes = [
+                    0  => '1', // Grey
+                    5  => '2', // Red
+                    10 => '3', // Yellow
+                    15 => '4', // Green
+                ];
+
+                $arriving_on_time_color_codes = [
+                    0 => '2', // Red
+                    5 => '4', // Green
+                ];
+
+                $referral_color_codes = [
+                    0  => '1', // Grey
+                    5  => '1', // Grey
+                    10 => '2', // Red
+                    15 => '3', // Yellow
+                    20 => '4', // Green
+                ];
+
+                $visitor_color_codes = [
+                    0  => '1', // Grey
+                    5  => '2', // Red
+                    10 => '3', // Yellow
+                    15 => '4', // Green
+                    20 => '4', // Green
+                ];
+
+                $tyfcb_color_codes = [
+                    0  => '1', // Grey
+                    5  => '2', // Red
+                    10 => '3', // Yellow
+                    15 => '4', // Green
+                ];
+
+                $testimonial_color_codes = [
+                    0  => '2', // Red
+                    5  => '3', // Yellow
+                    10 => '4', // Green
+                ];
+
+                $training_color_codes = [
+                    0  => '1', // Grey
+                    5  => '2', // Red
+                    10 => '3', // Yellow
+                    15 => '4', // Green
+                ];
+
+                $weeks = $wednesdayCount;
+                $referralPointsArray = [
+                    ['points' => 5, 'multiplier' => 0.5],
+                    ['points' => 10, 'multiplier' => 0.75],
+                    ['points' => 15, 'multiplier' => 1],
+                    ['points' => 20, 'multiplier' => 1.2],
+                ];
+
+                $referralResult = $this->calculateCategoryPoints($weeks, $referralPointsArray);
+
+                $visitorPointsArray = [
+                    ['points' => 5, 'multiplier' => 0.10],
+                    ['points' => 10, 'multiplier' => 0.25],
+                    ['points' => 15, 'multiplier' => 0.50],
+                    ['points' => 20, 'multiplier' => 0.75],
+                ];
+
+                $visitorResult = $this->calculateCategoryPoints($weeks, $visitorPointsArray);
+
+                $testimonialPointsArray = [
+                    ['points' => 5, 'multiplier' => 0.0000001],
+                    ['points' => 10, 'multiplier' => 0.074],
+                ];
+
+                $testimonialResult = $this->calculateCategoryPoints($weeks, $testimonialPointsArray);
+
+                $tyfcbPointsArray = [
+                    ['points' => 5, 'value' => 500000],
+                    ['points' => 10, 'value' => 1000000],
+                    ['points' => 15, 'value' => 2000000],
+                ];
+
+                $traningPointsArray = [
+                    ['points' => 5, 'value' => 1],
+                    ['points' => 10, 'value' => 2],
+                    ['points' => 15, 'value' => 3],
+                ];
+
+                // Build performance array
+
+                $performance['absenteeism'] = [
+                    'current_score' => $this->calculateScore(15, 5, $Absenteeism), // total=15, deduct=5 per late
+                    'current_data' => $Absenteeism,
+                    'color_code' => $Absenteeism_color_codes[$this->calculateScore(15, 5, $Absenteeism)]
+                        ?? '1', // default to Grey if score not found
+                ];
+
+                $performance['arriving_on_time'] = [
+                    'current_score' => $this->calculateArrivingOnTime(5, $ariving_on_time),
+                    'current_data' => $ariving_on_time,
+                    'color_code' => $arriving_on_time_color_codes[$this->calculateArrivingOnTime(5, $ariving_on_time)]
+                        ?? '1', // default to Grey if score not found
+                ];
+
+                $performance['visitor'] = [
+                    'current_score' => $this->getReferralPoints($visitor, $visitorResult),
+                    'current_data' => $visitor, // or some calculation
+                    'color_code' => $visitor_color_codes[$this->getReferralPoints($visitor, $visitorResult)]
+                        ?? '1', // default to Grey if score not found
+                ];
+
+                $performance['referrals'] = [
+                    'current_score' => $this->getReferralPoints($referral, $referralResult),
+                    'current_data' => $referral,
+                    'color_code' => $referral_color_codes[$this->getReferralPoints($referral, $referralResult)]
+                        ?? '1', // default to Grey if score not found
+                ];
+
+                $performance['tyfcb'] = [
+                    'current_score' => $this->getReferralPoints($tyfcb, $tyfcbPointsArray),
+                    'current_data' => $tyfcb,
+                    'color_code' => $tyfcb_color_codes[$this->getReferralPoints($tyfcb, $tyfcbPointsArray)]
+                        ?? '1', // default to Grey if score not found
+                ];
+
+                $performance['testimonial'] = [
+                    'current_score' => $this->getReferralPoints($testimonial, $testimonialResult),
+                    'current_data' => $testimonial,
+                    'color_code' => $testimonial_color_codes[$this->getReferralPoints($testimonial, $testimonialResult)]
+                        ?? '1', // default to Grey if score not found
+                ];
+
+                $performance['training'] = [
+                    'current_score' => $this->getReferralPoints($training, $traningPointsArray),
+                    'current_data' => $training,
+                    'color_code' => $training_color_codes[$this->getReferralPoints($training, $traningPointsArray)]
+                        ?? '1', // default to Grey if score not found
+                ];
+
+                // $totalScore = array_sum(array_column($performance, 'current_score'));
+                $totalScore = $performance['absenteeism']['current_score'] + $performance['arriving_on_time']['current_score'] + $performance['visitor']['current_score'] + $performance['referrals']['current_score'] + $performance['tyfcb']['current_score'] + $performance['testimonial']['current_score'] + $performance['training']['current_score'];
+                $performance['user'] = [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'total_score' => $totalScore
+                ];
+
+                $data[] = $performance;
+            }
+
+            return response()->json([
+                'status' => true,
+                'message' => 'All user reports fetched successfully',
+                'data' => $data
+            ]);
+        } catch (\Exception $e) {
+            Log::error('User report generation failed', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Something went wrong while fetching reports.'
+            ], 500);
+        }
+    }
+
 
     // public function userReport()
     // {

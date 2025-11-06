@@ -102,7 +102,7 @@ class ImportController extends Controller
             $input = $request->all();
 
             // Validate file
-            $validation = Validator::make($input, [
+            $validation = Validator::make($request->all(), [
                 'file' => 'required|mimes:xlsx,xls,csv',
             ]);
 
@@ -119,39 +119,54 @@ class ImportController extends Controller
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
 
-            // Convert header row to DB-friendly format
-            $header = array_map(function ($h) {
-                return strtolower(str_replace(' ', '_', $h));
-            }, $rows[0]);
+            // // Convert header row to DB-friendly format
+            // $header = array_map(function ($h) {
+            //     return strtolower(str_replace(' ', '_', $h));
+            // }, $rows[9]);
 
-            unset($rows[0]); // Remove header row
-            Event::truncate();
+            // unset($rows[0]); // Remove header row
+            // ✅ Header is on row 9 (index 8, since array starts at 0)
+            $headerRowIndex = 9;
+            $header = array_map(function ($h) {
+                return strtolower(str_replace(' ', '_', trim($h)));
+            }, $rows[$headerRowIndex]);
+
+            // ✅ Remove everything before row 9 (headers + junk rows)
+            $rows = array_slice($rows, $headerRowIndex + 1);
+            // Event::truncate();
 
             foreach ($rows as $row) {
                 $data = array_combine($header, $row);
 
                 // Skip row if critical fields are missing
                 // Skip row if any required field is null
-                if (empty($data['name']) || empty($data['email']) || empty($data['first_name']) || empty($data['last_name'])) {
+                if (empty($data['email']) || empty($data['first_name']) || empty($data['last_name'])) {
                     continue;
                 }
 
+                $name = $data['first_name'] . ' ' . $data['last_name'];
+
                 // Check if user already exists by name
-                $user = User::where('name', $data['name'])->orWhere('email', $data['email'])->first();
+                $user = User::where('name', $name)->orWhere('email', $data['email'])->first();
 
                 if (!$user) {
                     // If your users table has these columns, map them
                     $user = User::create([
                         'first_name'  => $data['first_name'] ?? null,
                         'last_name'   => $data['last_name'] ?? null,
-                        'name'        => $data['name'] ?? null,
+                        'name'        => $name ?? null,
                         'email'       => $data['email'] ?? null,
                         'phone'       => $data['phone'] ?? null,
-                        'join_date'   => $this->formatExcelDate($data['join_date'] ?? null),
+                        'join_date'   => $this->formatDate($data['join_date'] ?? null),
                         'chapter'     => $data['chapter_name'] ?? null,
                         'region_name' => $data['region_name'] ?? null,
                         'password'    => Hash::make('Ashv@2025'), // fallback password
                         'role_id'     => 2,
+                    ]);
+                } else {
+                    // ✅ If user already exists, update their join_date
+                    $user->update([
+                        'join_date' => $this->formatDate($data['join_date'] ?? null),
                     ]);
                 }
 
@@ -168,7 +183,7 @@ class ImportController extends Controller
                 // Insert into events table
                 Event::create([
                     'user_id'       => $user->id,
-                    'name'          => $data['name'] ?? null,
+                    'name'          => $name ?? null,
                     'email'         => $data['email'] ?? null,
                     'phone'         => $data['phone'] ?? null,
                     'first_name'    => $data['first_name'] ?? null,
@@ -177,8 +192,8 @@ class ImportController extends Controller
                     'chapter_name'  => $data['chapter_name'] ?? null,
                     'event_date'    => $this->formatExcelDate($data['event_date'] ?? null),
                     'event_type'    => $data['event_type'] ?? null,
-                    'join_date'     => $this->formatExcelDate($data['join_date'] ?? null),
-                    'induction_date' => $this->formatExcelDate($data['induction_date'] ?? null),
+                    'join_date'     => $this->formatDate($data['join_date'] ?? null),
+                    'induction_date' => $this->formatDate($data['induction_date'] ?? null),
                 ]);
             }
 
@@ -242,7 +257,7 @@ class ImportController extends Controller
             $totalRows = count($rows);
 
             // Optional: Delete old data before import
-            Relevant::truncate();
+            // Relevant::truncate();
 
             // Start from row 9 (index 8)
             for ($i = 8; $i < $totalRows; $i++) {
@@ -265,32 +280,56 @@ class ImportController extends Controller
                 }
 
                 // Prevent duplicate relevant entry for the same user
-                if (Relevant::where('user_id', $user->id)->exists()) {
-                    continue;
-                }
+                // if (Relevant::where('user_id', $user->id)->exists()) {
+                //     continue;
+                // }
+
+                $relevant = Relevant::where([
+                    'user_id' => $user->id,
+                    'targeted_date' => $targeted_date
+                ])->first();
 
                 // Insert into relevant table
-                Relevant::create([
-                    'user_id' => $user->id,
-                    'name'    => $user->name, // optional: store full name
-                    'first_name' => $data['first_name'] ?? null,
-                    'last_name' => $data['last_name'] ?? null,
-                    'p'       => $data['p'] ?? null,
-                    'a'       => $data['a'] ?? null,
-                    'l'       => $data['l'] ?? null,
-                    'm'       => $data['m'] ?? null,
-                    's'       => $data['s'] ?? null,
-                    'rgi'     => $data['rgi'] ?? null,
-                    'rgo'     => $data['rgo'] ?? null,
-                    'rri'     => $data['rri'] ?? null,
-                    'rro'     => $data['rro'] ?? null,
-                    'v'       => $data['v'] ?? null,
-                    '1_2_1'   => $data['1_2_1'] ?? null,
-                    'tyfcb'   => $data['tyfcb'] ?? null,
-                    'ceu'     => $data['ceu'] ?? null,
-                    't'       => $data['t'] ?? null,
-                    'targeted_date' => $targeted_date,
-                ]);
+                if (!$relevant) {
+                    Relevant::create([
+                        'user_id' => $user->id,
+                        'name'    => $user->name, // optional: store full name
+                        'first_name' => $data['first_name'] ?? null,
+                        'last_name' => $data['last_name'] ?? null,
+                        'p'       => $data['p'] ?? null,
+                        'a'       => $data['a'] ?? null,
+                        'l'       => $data['l'] ?? null,
+                        'm'       => $data['m'] ?? null,
+                        's'       => $data['s'] ?? null,
+                        'rgi'     => $data['rgi'] ?? null,
+                        'rgo'     => $data['rgo'] ?? null,
+                        'rri'     => $data['rri'] ?? null,
+                        'rro'     => $data['rro'] ?? null,
+                        'v'       => $data['v'] ?? null,
+                        '1_2_1'   => $data['1_2_1'] ?? null,
+                        'tyfcb'   => $data['tyfcb'] ?? null,
+                        'ceu'     => $data['ceu'] ?? null,
+                        't'       => $data['t'] ?? null,
+                        'targeted_date' => $targeted_date,
+                    ]);
+                } else {
+                    $relevant->update([
+                        'p'       => $data['p'] ?? null,
+                        'a'       => $data['a'] ?? null,
+                        'l'       => $data['l'] ?? null,
+                        'm'       => $data['m'] ?? null,
+                        's'       => $data['s'] ?? null,
+                        'rgi'     => $data['rgi'] ?? null,
+                        'rgo'     => $data['rgo'] ?? null,
+                        'rri'     => $data['rri'] ?? null,
+                        'rro'     => $data['rro'] ?? null,
+                        'v'       => $data['v'] ?? null,
+                        '1_2_1'   => $data['1_2_1'] ?? null,
+                        'tyfcb'   => $data['tyfcb'] ?? null,
+                        'ceu'     => $data['ceu'] ?? null,
+                        't'       => $data['t'] ?? null,
+                    ]);
+                }
             }
 
             return response()->json(['status' => true, 'message' => 'Relevant data imported successfully']);
@@ -326,6 +365,49 @@ class ImportController extends Controller
             return Carbon::parse($value)->format('Y-m-d');
         } catch (\Exception $e) {
             // If parsing fails, return null instead of crashing
+            return null;
+        }
+    }
+
+    function formatDate($value)
+    {
+        if (empty($value)) {
+            return null;
+        }
+
+        try {
+            // ✅ If numeric, try to interpret as a timestamp (Excel serials will be ignored)
+            if (is_numeric($value)) {
+                // Skip Excel-style numeric serials; just ignore
+                return null;
+            }
+
+            // ✅ Normalize separators (replace . or - with /)
+            $cleanValue = str_replace(['.', '-'], '/', trim($value));
+
+            // ✅ Try these formats explicitly
+            $formats = [
+                'd/m/y',
+                'd/m/Y',
+                'j/n/y',
+                'j/n/Y',
+            ];
+
+            foreach ($formats as $format) {
+                try {
+                    $parsed = Carbon::createFromFormat($format, $cleanValue);
+                    if ($parsed !== false) {
+                        return $parsed->format('Y-m-d');
+                    }
+                } catch (\Exception $e) {
+                    // Try next format
+                }
+            }
+
+            // ✅ Fallback (only if Carbon can parse automatically)
+            // This helps handle cases like 2024/03/01
+            return Carbon::parse(str_replace('/', '-', $cleanValue))->format('Y-m-d');
+        } catch (\Exception $e) {
             return null;
         }
     }
