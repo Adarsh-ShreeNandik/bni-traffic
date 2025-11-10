@@ -1036,7 +1036,7 @@ class UserController extends Controller
     public function userTableReport()
     {
         try {
-            $user = Auth::user();
+            $user = Auth::user()->load('trainings');
             $userId = $user->id;
 
             // Fetch last 6 months' relevant data
@@ -1065,14 +1065,20 @@ class UserController extends Controller
                 $fromDate = $targetDate->copy()->subMonths(6);
                 $toDate = $targetDate->copy();
 
-                $trainingCount = $relevant->user->trainings()
+                // Training count (last 6 months)
+                $trainingCount = $user->trainings()
                     ->whereBetween('event_date', [$fromDate, $toDate])
                     ->count();
 
-                // Format month
-                $targeted_date = (new \DateTime($relevant->targeted_date))->format('M-y');
+                // Calculate Wednesday count
+                $join_date = $user->join_date;
+                $currentDate = \Carbon\Carbon::parse($join_date);
+                $period = \Carbon\CarbonPeriod::create($currentDate, $targetDate);
+                $wednesdayCount = min(
+                    collect($period)->filter(fn($date) => $date->isWednesday())->count(),
+                    26
+                );
 
-                // Basic variables
                 $Absenteeism = (int)$relevant->a;
                 $referral = (int)$relevant->rgi + $relevant->rgo;
                 $visitor = $relevant->v;
@@ -1080,8 +1086,56 @@ class UserController extends Controller
                 $tyfcb = (int)$relevant->tyfcb;
                 $testimonial = (int)$relevant->t;
                 $training = $trainingCount;
-                $weeks = $relevant->p + $relevant->a + $relevant->l + $relevant->m + $relevant->s;
 
+                $Absenteeism_color_codes = [
+                    0  => '1', // Grey
+                    5  => '2', // Red
+                    10 => '3', // Yellow
+                    15 => '4', // Green
+                ];
+
+                $arriving_on_time_color_codes = [
+                    0 => '2', // Red
+                    5 => '4', // Green
+                ];
+
+                $referral_color_codes = [
+                    0  => '1', // Grey
+                    5  => '1', // Grey
+                    10 => '2', // Red
+                    15 => '3', // Yellow
+                    20 => '4', // Green
+                ];
+
+                $visitor_color_codes = [
+                    0  => '1', // Grey
+                    5  => '2', // Red
+                    10 => '3', // Yellow
+                    15 => '4', // Green
+                    20 => '4', // Green
+                ];
+
+                $tyfcb_color_codes = [
+                    0  => '1', // Grey
+                    5  => '2', // Red
+                    10 => '3', // Yellow
+                    15 => '4', // Green
+                ];
+
+                $testimonial_color_codes = [
+                    0  => '2', // Red
+                    5  => '3', // Yellow
+                    10 => '4', // Green
+                ];
+
+                $training_color_codes = [
+                    0  => '1', // Grey
+                    5  => '2', // Red
+                    10 => '3', // Yellow
+                    15 => '4', // Green
+                ];
+
+                $weeks = $wednesdayCount;
                 $referralPointsArray = [
                     ['points' => 5, 'multiplier' => 0.5],
                     ['points' => 10, 'multiplier' => 0.75],
@@ -1120,110 +1174,71 @@ class UserController extends Controller
                 ];
 
                 // Build performance array
-                $performance[] = [
-                    'name' => 'absenteeism',
+
+                $performance['absenteeism'] = [
                     'current_score' => $this->calculateScore(15, 5, $Absenteeism), // total=15, deduct=5 per late
                     'current_data' => $Absenteeism,
+                    'color_code' => $Absenteeism_color_codes[$this->calculateScore(15, 5, $Absenteeism)]
+                        ?? '1', // default to Grey if score not found
                 ];
 
-                $performance[] = [
-                    'name' => 'arriving on time',
+                $performance['arriving_on_time'] = [
                     'current_score' => $this->calculateArrivingOnTime(5, $ariving_on_time),
                     'current_data' => $ariving_on_time,
+                    'color_code' => $arriving_on_time_color_codes[$this->calculateArrivingOnTime(5, $ariving_on_time)]
+                        ?? '1', // default to Grey if score not found
                 ];
 
-                $performance[] = [
-                    'name' => 'visitor',
+                $performance['visitor'] = [
                     'current_score' => $this->getReferralPoints($visitor, $visitorResult),
                     'current_data' => $visitor, // or some calculation
+                    'color_code' => $visitor_color_codes[$this->getReferralPoints($visitor, $visitorResult)]
+                        ?? '1', // default to Grey if score not found
                 ];
 
-                $performance[] = [
-                    'name' => 'referrals',
+                $performance['referrals'] = [
                     'current_score' => $this->getReferralPoints($referral, $referralResult),
                     'current_data' => $referral,
+                    'color_code' => $referral_color_codes[$this->getReferralPoints($referral, $referralResult)]
+                        ?? '1', // default to Grey if score not found
                 ];
 
-                $performance[] = [
-                    'name' => 'tyfcb',
+                $performance['tyfcb'] = [
                     'current_score' => $this->getReferralPoints($tyfcb, $tyfcbPointsArray),
                     'current_data' => $tyfcb,
+                    'color_code' => $tyfcb_color_codes[$this->getReferralPoints($tyfcb, $tyfcbPointsArray)]
+                        ?? '1', // default to Grey if score not found
                 ];
 
-                $performance[] = [
-                    'name' => 'testimonial',
+                $performance['testimonial'] = [
                     'current_score' => $this->getReferralPoints($testimonial, $testimonialResult),
                     'current_data' => $testimonial,
+                    'color_code' => $testimonial_color_codes[$this->getReferralPoints($testimonial, $testimonialResult)]
+                        ?? '1', // default to Grey if score not found
                 ];
 
-                $performance[] = [
-                    'name' => 'training',
+                $performance['training'] = [
                     'current_score' => $this->getReferralPoints($training, $traningPointsArray),
                     'current_data' => $training,
+                    'color_code' => $training_color_codes[$this->getReferralPoints($training, $traningPointsArray)]
+                        ?? '1', // default to Grey if score not found
                 ];
 
-                // $needToDo[] = [
-                //     'name' => 'absenteeism',
-                //     '5_points' => "-",
-                //     '10_points' => "-",
-                //     '15_points' => "-",
-                //     '20_points' => "-",
-                // ];
-
-                // $needToDo[] = [
-                //     'name' => 'arriving on time',
-                //     '5_points' => "-",
-                //     '10_points' => "-",
-                //     '15_points' => "-",
-                //     '20_points' => "-",
-                // ];
-
-                // // dd($referralResult);
-                // $needToDo[] = $this->calculateNeedToDo('visitor', $visitor, $visitorResult);
-                // $needToDo[] = $this->calculateNeedToDo('referrals', $referral, $referralResult);
-                // $needToDo[] = $this->calculateNeedToDo('tyfcb', $tyfcb, $tyfcbPointsArray);
-                // $needToDo[] = $this->calculateNeedToDo('testimonial', $testimonial, $testimonialResult);
-                // $needToDo[] = $this->calculateNeedToDo('training', $training, $traningPointsArray);
                 // $totalScore = array_sum(array_column($performance, 'current_score'));
-                // // Define all points keys that must exist
-                // $allKeys = ['5_points', '10_points', '15_points', '20_points'];
-
-                // // Normalize each needToDo item
-                // foreach ($needToDo as &$item) {
-                //     foreach ($allKeys as $key) {
-                //         if (!array_key_exists($key, $item)) {
-                //             $item[$key] = '-'; // fill missing key with '-'
-                //         }
-                //     }
-                //     // Optional: sort keys so order is consistent
-                //     // ksort($item);
-                // }
-
-                $monthScore = array_sum(array_column($performance, 'current_score'));
-                $totalScore += $monthScore;
-
-                $monthlyReports[] = [
-                    'month' => $targeted_date,
-                    'performance' => $performance,
-                    'total_score' => $monthScore,
+                $totalScore = $performance['absenteeism']['current_score'] + $performance['arriving_on_time']['current_score'] + $performance['visitor']['current_score'] + $performance['referrals']['current_score'] + $performance['tyfcb']['current_score'] + $performance['testimonial']['current_score'] + $performance['training']['current_score'];
+                $performance['user'] = [
+                    'id' => $user->id,
+                    'total_score' => $totalScore,
+                    'date' => $relevant->targeted_date
                 ];
+
+                $data[] = $performance;
             }
 
             return response()->json([
                 'status' => true,
                 'message' => 'Fetched last 6 months user performance successfully!',
-                'data' => [
-                    'user_info' => [
-                        'name' => $user->name,
-                        'chapter' => $user->chapter,
-                    ],
-                    // 'summary' => [
-                    //     'months' => $monthlyReports->count() ?? count($monthlyReports),
-                    //     'total_score' => $totalScore,
-                    //     'average_score' => round($totalScore / count($monthlyReports), 2),
-                    // ],
-                    'reports' => $monthlyReports,
-                ],
+                'data' => $data
             ]);
         } catch (\Exception $e) {
             Log::error("UserReport Error :: ", [
