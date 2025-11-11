@@ -23,7 +23,7 @@ class ImportController extends Controller
             $input = $request->all();
 
             $validation = Validator::make($input, [
-                'file' => "required|mimes:xlsx,xls,csv",
+                'file' => "required",
             ]);
 
             if ($validation->fails()) {
@@ -103,7 +103,7 @@ class ImportController extends Controller
 
             // Validate file
             $validation = Validator::make($request->all(), [
-                'file' => 'required|mimes:xlsx,xls,csv',
+                'file' => 'required',
             ]);
 
             if ($validation->fails()) {
@@ -130,6 +130,19 @@ class ImportController extends Controller
             $header = array_map(function ($h) {
                 return strtolower(str_replace(' ', '_', trim($h)));
             }, $rows[$headerRowIndex]);
+
+            // ✅ Define the required columns
+            $requiredColumns = ['email', 'first_name', 'last_name', 'event_date', 'event_type', 'phone', 'join_date', 'chapter_name', 'region_name', 'induction_date'];
+
+            // ✅ Check if all required columns exist in header
+            $missingColumns = array_diff($requiredColumns, $header);
+
+            if (!empty($missingColumns)) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Invalid file format. Missing columns: ' . implode(', ', $missingColumns)
+                ], 200);
+            }
 
             // ✅ Remove everything before row 9 (headers + junk rows)
             $rows = array_slice($rows, $headerRowIndex + 1);
@@ -238,7 +251,17 @@ class ImportController extends Controller
             $spreadsheet = IOFactory::load($file);
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
+
+            // ✅ Step 1: Validate targeted date
             $targeted_date = $rows[6][10] ?? null;
+
+            if (empty($targeted_date)) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'To date not found in the expected column (row 6, column 10).'
+                ], 200);
+            }
+
             if ($targeted_date) {
                 // The format is day/month/year with 2-digit year
                 $date = \DateTime::createFromFormat('d/m/y', $targeted_date);
@@ -248,11 +271,56 @@ class ImportController extends Controller
                 }
             }
             // Convert header row to DB-friendly format
-            $header = array_map(function ($h) {
-                return strtolower(str_replace([' ', '-'], ['_', '_'], $h));
-            }, $rows[7]);
+            // $header = array_map(function ($h) {
+            //     return strtolower(str_replace([' ', '-'], ['_', '_'], $h));
+            // }, $rows[7]);
 
-            unset($rows[7]); // Remove header row
+            // unset($rows[7]); // Remove header row
+
+            // 10-11-2025
+            // ✅ Convert header row to DB-friendly format
+            $headerRowIndex = 7;
+            if (!isset($rows[$headerRowIndex])) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Invalid file format: header row not found.'
+                ], 200);
+            }
+
+            $header = array_map(function ($h) {
+                return strtolower(str_replace([' ', '-'], ['_', '_'], trim($h)));
+            }, $rows[$headerRowIndex]);
+
+            // ✅ Define required columns
+            $requiredColumns = [
+                'first_name',
+                'last_name',
+                'p',
+                'a',
+                'l',
+                'm',
+                's',
+                'rgi',
+                'rgo',
+                'rri',
+                'rro',
+                'v',
+                '1_2_1',
+                'tyfcb',
+                'ceu',
+                't'
+            ];
+
+            // ✅ Check if required columns exist
+            $missingColumns = array_diff($requiredColumns, $header);
+            if (!empty($missingColumns)) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Invalid file format. Missing columns: ' . implode(', ', $missingColumns)
+                ], 200);
+            }
+
+            unset($rows[$headerRowIndex]); // Remove header row
 
             $totalRows = count($rows);
 

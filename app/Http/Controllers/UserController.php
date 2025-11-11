@@ -1229,7 +1229,7 @@ class UserController extends Controller
                 $performance['user'] = [
                     'id' => $user->id,
                     'total_score' => $totalScore,
-                    'date' => $relevant->targeted_date
+                    'date' => $this->formatToMonthYear($relevant->targeted_date, true)
                 ];
 
                 $data[] = $performance;
@@ -1652,6 +1652,26 @@ class UserController extends Controller
             return '2'; // Red
         } else {
             return '1'; // Gray
+        }
+    }
+
+    private function formatToMonthYear($date, $short = false)
+    {
+        if (empty($date)) {
+            return null;
+        }
+
+        try {
+            // Convert to Carbon instance (Laravel provides Carbon by default)
+            $carbonDate = \Carbon\Carbon::parse($date);
+
+            // Format: F-Y → October-2025 or M-Y → Oct-2025
+            return $short
+                ? $carbonDate->format('M-Y')  // Short month (Oct)
+                : $carbonDate->format('F-Y'); // Full month (October)
+        } catch (\Exception $e) {
+            // If invalid date, return null
+            return null;
         }
     }
 }
