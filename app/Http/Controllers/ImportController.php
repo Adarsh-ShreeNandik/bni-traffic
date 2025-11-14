@@ -184,30 +184,57 @@ class ImportController extends Controller
                 }
 
                 // Prevent duplicate events
+                // $eventExists = Event::where('user_id', $user->id)
+                //     ->where('event_date', $this->formatExcelDate($data['event_date'] ?? null))
+                //     ->where('event_type', $data['event_type'] ?? null)
+                //     ->exists();
+
+                // if ($eventExists) {
+                //     continue; // Skip duplicate
+                // }
+
+                // Insert into events table
+                // Event::create([
+                //     'user_id'       => $user->id,
+                //     'name'          => $name ?? null,
+                //     'email'         => $data['email'] ?? null,
+                //     'phone'         => $data['phone'] ?? null,
+                //     'first_name'    => $data['first_name'] ?? null,
+                //     'last_name'     => $data['last_name'] ?? null,
+                //     'region_name'   => $data['region_name'] ?? null,
+                //     'chapter_name'  => $data['chapter_name'] ?? null,
+                //     'event_date'    => $this->formatExcelDate($data['event_date'] ?? null),
+                //     'event_type'    => $data['event_type'] ?? null,
+                //     'join_date'     => $this->formatDate($data['join_date'] ?? null),
+                //     'induction_date' => $this->formatDate($data['induction_date'] ?? null),
+                // ]);
+
                 $eventExists = Event::where('user_id', $user->id)
                     ->where('event_date', $this->formatExcelDate($data['event_date'] ?? null))
                     ->where('event_type', $data['event_type'] ?? null)
-                    ->exists();
+                    ->first();
 
-                if ($eventExists) {
-                    continue; // Skip duplicate
-                }
-
-                // Insert into events table
-                Event::create([
-                    'user_id'       => $user->id,
-                    'name'          => $name ?? null,
-                    'email'         => $data['email'] ?? null,
-                    'phone'         => $data['phone'] ?? null,
-                    'first_name'    => $data['first_name'] ?? null,
-                    'last_name'     => $data['last_name'] ?? null,
-                    'region_name'   => $data['region_name'] ?? null,
-                    'chapter_name'  => $data['chapter_name'] ?? null,
-                    'event_date'    => $this->formatExcelDate($data['event_date'] ?? null),
-                    'event_type'    => $data['event_type'] ?? null,
-                    'join_date'     => $this->formatDate($data['join_date'] ?? null),
+                $eventData = [
+                    'user_id'        => $user->id,
+                    'name'           => $name ?? null,
+                    'email'          => $data['email'] ?? null,
+                    'phone'          => $data['phone'] ?? null,
+                    'first_name'     => $data['first_name'] ?? null,
+                    'last_name'      => $data['last_name'] ?? null,
+                    'region_name'    => $data['region_name'] ?? null,
+                    'chapter_name'   => $data['chapter_name'] ?? null,
+                    'event_date'     => $this->formatExcelDate($data['event_date'] ?? null),
+                    'event_type'     => $data['event_type'] ?? null,
+                    'join_date'      => $this->formatDate($data['join_date'] ?? null),
                     'induction_date' => $this->formatDate($data['induction_date'] ?? null),
-                ]);
+                ];
+
+                // ✅ If event exists → update; else → create new
+                if ($eventExists) {
+                    $eventExists->update($eventData);
+                } else {
+                    Event::create($eventData);
+                }
             }
 
             return response()->json(['status' => true, 'message' => 'Events imported successfully']);

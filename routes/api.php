@@ -32,6 +32,8 @@ Route::middleware(['auth:api'])->group(function () {
     Route::get('user-report', [UserController::class, 'userReport']);
     Route::get('users-reports', [UserController::class, 'allUserReports']);
     Route::get('events', [EventController::class, 'index']);
+    Route::get('users-event-report', [UserController::class, 'userEventReport']);
+    Route::get('users-testimonial-report', [UserController::class, 'usersTestimonialReport']);
     Route::get('relevants', [RelevantController::class, 'index']);
     Route::post('change-password', [UserController::class, 'changePassword']);
     Route::post('import-users', [ImportController::class, 'importUsers']);

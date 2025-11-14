@@ -114,6 +114,7 @@ class UserController extends Controller
         }
     }
 
+    // Particular user report
     public function userReport()
     {
         try {
@@ -418,6 +419,7 @@ class UserController extends Controller
         try {
             $input = $request->all();
             $targeted_date = $request->input('targeted_date') ?? Carbon::now()->format('M-y'); // e.g. "Nov-25"
+            $search = $request->input('name'); // optional name search
             // Fetch all users with their relevant data (latest record)
             // $users = User::with(['relevants' => function ($q) use ($targeted_date) {
             //     // Match month-year in "M-Y" format (e.g. Oct-2025)
@@ -427,8 +429,16 @@ class UserController extends Controller
             $users = User::with(['relevants' => function ($q) use ($targeted_date) {
                 $q->whereRaw("DATE_FORMAT(targeted_date, '%b-%Y') = ?", [$targeted_date]);
             }, 'trainings'])
+                ->where('role_id', '!=', 1)
                 ->whereHas('relevants', function ($q) use ($targeted_date) {
                     $q->whereRaw("DATE_FORMAT(targeted_date, '%b-%Y') = ?", [$targeted_date]);
+                })
+                // 🔍 Optional name filter (still must have relevants)
+                ->when(!empty($search), function ($query) use ($search, $targeted_date) {
+                    $query->whereHas('relevants', function ($q) use ($targeted_date) {
+                        $q->whereRaw("DATE_FORMAT(targeted_date, '%b-%Y') = ?", [$targeted_date]);
+                    })
+                        ->where('name', 'like', "%{$search}%");
                 })
                 ->paginate(
                     $input['per_page_count'] ?? 10,
@@ -627,7 +637,8 @@ class UserController extends Controller
                 $performance['user'] = [
                     'id' => $user->id,
                     'name' => $user->name,
-                    'total_score' => $totalScore
+                    'total_score' => $totalScore,
+                    'wednesdayCount' => $wednesdayCount
                 ];
 
                 $data[] = $performance;
@@ -636,7 +647,10 @@ class UserController extends Controller
             return response()->json([
                 'status' => true,
                 'message' => 'All user reports fetched successfully',
-                'data' => $data
+                'data' => [
+                    'users_data' => $data,
+                    'total_users' => $users->total()
+                ]
             ]);
         } catch (\Exception $e) {
             Log::error('User report generation failed', [
@@ -651,7 +665,6 @@ class UserController extends Controller
             ], 500);
         }
     }
-
 
     // public function userReport()
     // {
@@ -1033,6 +1046,7 @@ class UserController extends Controller
         }
     }
 
+    // User 6 month data
     public function userTableReport()
     {
         try {
@@ -1253,6 +1267,402 @@ class UserController extends Controller
             ], 500);
         }
     }
+
+    // public function userEventReport(Request $request)
+    // {
+    //     try {
+    //         $input = $request->all();
+    //         $currentMonthYear = trim($this->formatToMonthYear($request->input('date') ?? Carbon::now(), true)); // e.g. "Nov-25" or "Nov-2025"
+
+    //         // Try both M-y and M-Y formats safely
+    //         try {
+    //             $targetDate = Carbon::createFromFormat('M-y', $currentMonthYear)->endOfMonth();
+    //         } catch (\Exception $e) {
+    //             // fallback if year is 4 digits (e.g. "Nov-2025")
+    //             $targetDate = Carbon::createFromFormat('M-Y', $currentMonthYear)->endOfMonth();
+    //         }
+
+    //         $fromDate = $targetDate->copy()->subMonths(6)->startOfMonth();
+
+    //         $users = User::with(['trainings' => function ($query) use ($fromDate, $targetDate) {
+    //             $query->whereBetween('event_date', [$fromDate, $targetDate]);
+    //         }])
+    //             ->withCount([
+    //                 'trainings as trainings_count' => function ($query) use ($fromDate, $targetDate) {
+    //                     $query->whereBetween('event_date', [$fromDate, $targetDate]);
+    //                 }
+    //             ])
+    //             ->where('role_id', '!=', 1)
+    //             ->having('trainings_count', '<', 3)
+    //             ->paginate(
+    //                 $input['per_page_count'] ?? 10,
+    //                 ['*'],
+    //                 'page',
+    //                 $input['curr_page'] ?? 1
+    //             );
+
+    //         $data = [];
+
+    //         $training_color_codes = [
+    //             0  => '1', // Grey
+    //             1  => '2', // Red
+    //             2 => '3', // Yellow
+    //         ];
+
+    //         foreach ($users as $user) {
+    //             $count = $user->trainings_count ?? 0;
+    //             $colorCode = $training_color_codes[$count] ?? '4'; // Default color if >2 trainings (optional)
+
+    //             $data[] = [
+    //                 'name'          => $user->name,
+    //                 'training'      => $count,
+    //                 'standard'      => 3,
+    //                 'short'         => max(0, 3 - $count),
+    //                 'color_code'    => $colorCode,
+    //             ];
+    //         }
+
+    //         return response()->json([
+    //             'status' => true,
+    //             'message' => 'All user trainings reports fetched successfully',
+    //             'data' => [
+    //                 'users_data' => $data,
+    //                 'total_users' => $users->total()
+    //             ]
+    //         ]);
+    //     } catch (\Exception $e) {
+    //         Log::error('User report generation failed', [
+    //             'message' => $e->getMessage(),
+    //             'file' => $e->getFile(),
+    //             'line' => $e->getLine(),
+    //         ]);
+
+    //         return response()->json([
+    //             'status' => false,
+    //             'message' => 'Something went wrong while fetching reports.'
+    //         ], 500);
+    //     }
+    // }
+
+    public function userEventReport(Request $request)
+    {
+        try {
+            $input = $request->all();
+
+            $search = $request->name;
+
+            // 🕒 Determine month and year
+            $dateInput = $request->input('date') ?? Carbon::now();
+            $formattedMonthYear = $this->formatToMonthYear($dateInput, true);
+
+            // 🗓 Parse safe date (support M-y or M-Y)
+            try {
+                $targetDate = Carbon::createFromFormat('M-y', $formattedMonthYear)->endOfMonth();
+            } catch (\Exception $e) {
+                $targetDate = Carbon::createFromFormat('M-Y', $formattedMonthYear)->endOfMonth();
+            }
+
+            $fromDate = (clone $targetDate)->subMonths(6)->startOfMonth();
+
+            // 🧠 Fetch only required data — avoid loading relationship objects
+            // 🧠 Base query
+            $query = User::select('id', 'name')
+                ->where('role_id', '!=', 1)
+                ->withCount([
+                    'trainings as trainings_count' => function ($query) use ($fromDate, $targetDate) {
+                        $query->whereBetween('event_date', [$fromDate, $targetDate]);
+                    }
+                ])
+                ->having('trainings_count', '<', 3);
+
+            // 🔍 Apply search filter (optional)
+            if (!empty($search)) {
+                $query->where('name', 'like', "%{$search}%");
+            }
+
+            // 📊 Paginate results
+            $users = $query
+                ->orderBy('trainings_count', 'asc')
+                ->paginate(
+                    $input['per_page_count'] ?? 10,
+                    ['*'],
+                    'page',
+                    $input['curr_page'] ?? 1
+                );
+
+            // 🎨 Define color codes once
+            $training_color_codes = [
+                0 => 1, // Grey
+                1 => 2, // Red
+                2 => 3, // Yellow
+            ];
+
+            // 🧩 Build response data efficiently
+            $data = $users->map(function ($user) use ($training_color_codes) {
+                $count = (int)($user->trainings_count ?? 0);
+
+                return [
+                    'name'       => $user->name,
+                    'training'   => $count,
+                    'standard'   => 3,
+                    'short'      => max(0, 3 - $count),
+                    'color_code' => $training_color_codes[$count] ?? '4', // Default to Green
+                ];
+            });
+
+            // ✅ Return structured JSON response
+            return response()->json([
+                'status' => true,
+                'message' => 'All user training reports fetched successfully',
+                'data' => [
+                    'users_training_data'   => $data,
+                    'total_users'  => $users->total(),
+                    // 'current_page' => $users->currentPage(),
+                    // 'last_page'    => $users->lastPage(),
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('User training report generation failed', [
+                'message' => $e->getMessage(),
+                'file'    => $e->getFile(),
+                'line'    => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Something went wrong while fetching reports.'
+            ], 500);
+        }
+    }
+
+    // public function usersTestimonialReport(Request $request)
+    // {
+    //     try {
+    //         $input = $request->all();
+    //         $search = $request->name ?? null;
+
+    //         // 🕒 Determine month and year
+    //         $dateInput = $request->input('date') ?? Carbon::now();
+    //         $formattedMonthYear = $this->formatToMonthYear($dateInput, true);
+
+    //         // 🗓 Parse safe date (support M-y or M-Y)
+    //         try {
+    //             $targetDate = Carbon::createFromFormat('M-y', $formattedMonthYear)->endOfMonth();
+    //         } catch (\Exception $e) {
+    //             $targetDate = Carbon::createFromFormat('M-Y', $formattedMonthYear)->endOfMonth();
+    //         }
+
+    //         $targetMonth = $targetDate->format('m');
+    //         $targetYear  = $targetDate->format('Y');
+
+    //         // 🧠 Query users who have relevant testimonial data
+    //         $query = User::select('id', 'name', 'join_date')
+    //             ->where('role_id', '!=', 1)
+    //             ->whereHas('relevants', function ($q) use ($targetMonth, $targetYear) {
+    //                 $q->whereMonth('targeted_date', $targetMonth)
+    //                     ->whereYear('targeted_date', $targetYear)
+    //                     ->where('t', '<', 2);
+    //             })
+    //             ->with(['relevants' => function ($q) use ($targetMonth, $targetYear) {
+    //                 $q->select('id', 'user_id', 'targeted_date', 't')
+    //                     ->whereMonth('targeted_date', $targetMonth)
+    //                     ->whereYear('targeted_date', $targetYear)
+    //                     ->where('t', '<', 2);
+    //             }]);
+
+    //         // 🔍 Optional name filter
+    //         if (!empty($search)) {
+    //             $query->where('name', 'like', "%{$search}%");
+    //         }
+
+    //         // 📊 Paginate users
+    //         $users = $query->paginate(
+    //             $input['per_page_count'] ?? 10,
+    //             ['*'],
+    //             'page',
+    //             $input['curr_page'] ?? 1
+    //         );
+    //         // 🎨 Color code map
+    //         $testimonial_color_codes = [
+    //             0 => 1, // Grey
+    //             1 => 2, // Red
+    //         ];
+
+    //         // 🧩 Build response data
+    //         $data = $users->map(function ($user) use ($testimonial_color_codes, $targetDate) {
+
+    //             $testimonialCount = (int)$user->relevants->first()->t;
+    //             // ⏰ Parse join date safely
+    //             $joinDate = !empty($user->join_date) ? Carbon::parse($user->join_date) : Carbon::now()->subMonths(1);
+
+    //             // 🧮 Count total Wednesdays between join_date and targetDate
+    //             $period = \Carbon\CarbonPeriod::create($joinDate, $targetDate);
+    //             $wednesdayCount = min(collect($period)
+    //                 ->filter(fn($date) => $date->isWednesday())
+    //                 ->count(), 26);
+
+    //             // 📈 Standard is 7.4% of total Wednesdays
+    //             $standard = min(ceil(0.074 * $wednesdayCount), 2);
+    //             if ($standard == $testimonialCount) {
+    //                 return null; // return null (will be filtered out)
+    //             }
+    //             return [
+    //                 'name'        => $user->name,
+    //                 'testimonial' => $testimonialCount,
+    //                 'standard'    => $standard,
+    //                 'short'       => max(0, $standard - $testimonialCount),
+    //                 'color_code'  => $testimonial_color_codes[$testimonialCount] ?? 4, // Default = Green
+    //                 'wednesdays'  => $wednesdayCount,
+    //             ];
+    //         });
+
+    //         // ✅ Return structured JSON response
+    //         return response()->json([
+    //             'status' => true,
+    //             'message' => 'All user testimonial reports fetched successfully',
+    //             'data' => [
+    //                 'users_testimonial_data' => $data,
+    //                 'total_users' => $users->total(),
+    //                 'current_page' => $users->currentPage(),
+    //                 'last_page' => $users->lastPage(),
+    //             ]
+    //         ]);
+    //     } catch (\Exception $e) {
+    //         Log::error('User testimonial report generation failed', [
+    //             'message' => $e->getMessage(),
+    //             'file' => $e->getFile(),
+    //             'line' => $e->getLine(),
+    //         ]);
+
+    //         return response()->json([
+    //             'status' => false,
+    //             'message' => 'Something went wrong while fetching reports.',
+    //         ], 500);
+    //     }
+    // }
+
+    public function usersTestimonialReport(Request $request)
+    {
+        try {
+            $input  = $request->all();
+            $search = $request->name ?? null;
+
+            // 🕒 Determine month and year
+            $dateInput = $request->input('date') ?? Carbon::now();
+            $formattedMonthYear = $this->formatToMonthYear($dateInput, true);
+
+            // 🗓 Parse safe date (support both M-y and M-Y)
+            try {
+                $targetDate = Carbon::createFromFormat('M-y', $formattedMonthYear)->endOfMonth();
+            } catch (\Exception $e) {
+                $targetDate = Carbon::createFromFormat('M-Y', $formattedMonthYear)->endOfMonth();
+            }
+
+            $targetMonth = $targetDate->format('m');
+            $targetYear  = $targetDate->format('Y');
+
+            // 🧠 Query users who have relevant testimonial data
+            $query = User::select('id', 'name', 'join_date')
+                ->where('role_id', '!=', 1)
+                ->whereHas('relevants', function ($q) use ($targetMonth, $targetYear) {
+                    $q->whereMonth('targeted_date', $targetMonth)
+                        ->whereYear('targeted_date', $targetYear)
+                        ->where('t', '<', 2);
+                })
+                ->with(['relevants' => function ($q) use ($targetMonth, $targetYear) {
+                    $q->select('id', 'user_id', 'targeted_date', 't')
+                        ->whereMonth('targeted_date', $targetMonth)
+                        ->whereYear('targeted_date', $targetYear)
+                        ->where('t', '<', 2);
+                }]);
+
+            // 🔍 Optional search filter
+            if (!empty($search)) {
+                $query->where('name', 'like', "%{$search}%");
+            }
+
+            // 🧭 Pagination parameters
+            $perPage = $input['per_page_count'] ?? 10;
+            $page    = $input['curr_page'] ?? 1;
+
+            // Fetch all for accurate filtering and sorting
+            $users = $query->get();
+
+            // 🎨 Color code map
+            $testimonial_color_codes = [
+                0 => 1, // Grey
+                1 => 2, // Red
+            ];
+
+            // 🧩 Process data
+            $filteredData = $users->map(function ($user) use ($testimonial_color_codes, $targetDate) {
+                if ($user->relevants->isEmpty()) {
+                    return null;
+                }
+
+                $testimonialCount = (int)$user->relevants->first()->t;
+
+                // ⏰ Parse join date safely
+                $joinDate = !empty($user->join_date)
+                    ? Carbon::parse($user->join_date)
+                    : Carbon::now()->subMonths(1);
+
+                // 🧮 Count total Wednesdays between join_date and targetDate
+                $period = \Carbon\CarbonPeriod::create($joinDate, $targetDate);
+                $wednesdayCount = min(
+                    collect($period)->filter(fn($date) => $date->isWednesday())->count(),
+                    26
+                );
+
+                // 📈 Standard = 7.4% of total Wednesdays (max 2)
+                $standard = min(ceil(0.074 * $wednesdayCount), 2);
+
+                // ❌ Skip if meets standard
+                if ($standard == $testimonialCount) {
+                    return null;
+                }
+
+                return [
+                    'name'        => $user->name,
+                    'testimonial' => $testimonialCount,
+                    'standard'    => $standard,
+                    'short'       => max(0, $standard - $testimonialCount),
+                    'color_code'  => $testimonial_color_codes[$testimonialCount] ?? 4,
+                    'wednesdays'  => $wednesdayCount,
+                ];
+            })
+                ->filter() // remove null users
+                ->sortBy('testimonial') // ascending order
+                ->values();
+
+            // 🧮 Manual pagination after filtering
+            $totalUsers = $filteredData->count();
+            $pagedData  = $filteredData->forPage($page, $perPage)->values();
+
+            // ✅ Return response
+            return response()->json([
+                'status'  => true,
+                'message' => 'All user testimonial reports fetched successfully',
+                'data'    => [
+                    'users_testimonial_data' => $pagedData,
+                    'total_users'            => $totalUsers,
+                    'data_count'             => $pagedData->count(),
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('User testimonial report generation failed', [
+                'message' => $e->getMessage(),
+                'file'    => $e->getFile(),
+                'line'    => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'status'  => false,
+                'message' => 'Something went wrong while fetching reports.',
+            ], 500);
+        }
+    }
+
 
     public function changePassword(Request $request)
     {
