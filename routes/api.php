@@ -41,6 +41,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::post('import-relevants', [ImportController::class, 'importRelevant']);
     Route::get('user-profile', [UserController::class, 'userProfile']);
     Route::post('update-user-profile', [UserController::class, 'updateUserProfile']);
-    Route::get('user-reports', [UserController::class, 'userTableReport']);
+    // Route::get('user-reports', [UserController::class, 'userTableReport']);
+    Route::get('six-month-reports', [UserController::class, 'userTableReport']);
     Route::post('logout', [UserController::class, 'logout']);
 });

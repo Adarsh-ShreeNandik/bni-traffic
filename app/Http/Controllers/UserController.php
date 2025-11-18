@@ -418,7 +418,7 @@ class UserController extends Controller
     {
         try {
             $input = $request->all();
-            $targeted_date = $request->input('targeted_date') ?? Carbon::now()->format('M-y'); // e.g. "Nov-25"
+            $targeted_date = $request->input('targeted_date') ?? Carbon::now()->format('M-Y'); // e.g. "Nov-25"
             $search = $request->input('name'); // optional name search
             // Fetch all users with their relevant data (latest record)
             // $users = User::with(['relevants' => function ($q) use ($targeted_date) {
@@ -638,6 +638,7 @@ class UserController extends Controller
                     'id' => $user->id,
                     'name' => $user->name,
                     'total_score' => $totalScore,
+                    'color_code' => $this->getColorByTotalScore($totalScore),
                     'wednesdayCount' => $wednesdayCount
                 ];
 
@@ -1243,6 +1244,7 @@ class UserController extends Controller
                 $performance['user'] = [
                     'id' => $user->id,
                     'total_score' => $totalScore,
+                    'color_code' => $this->getColorByTotalScore($totalScore),
                     'date' => $this->formatToMonthYear($relevant->targeted_date, true)
                 ];
 
@@ -2052,16 +2054,16 @@ class UserController extends Controller
         return $needToDo;
     }
 
-    private static function getColorByPercentage($percentage)
+    private static function getColorByTotalScore($percentage)
     {
         if ($percentage >= 70) {
-            return '4'; // Green
+            return 4; // Green
         } elseif ($percentage >= 50) {
-            return '3'; // Yellow
+            return 3; // Yellow
         } elseif ($percentage >= 30) {
-            return '2'; // Red
+            return 2; // Red
         } else {
-            return '1'; // Gray
+            return 1; // Gray
         }
     }
 
