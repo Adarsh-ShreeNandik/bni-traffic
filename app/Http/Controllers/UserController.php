@@ -137,7 +137,7 @@ class UserController extends Controller
                 'ceu',
                 't',
                 'targeted_date'
-            )->where('user_id', $userId)->first();
+            )->where('user_id', $userId)->orderBy('targeted_date','DESC')->first();
 
             if (!$relevant) {
                 $date = new \DateTime();
